@@ -26,6 +26,7 @@ import java.util.Set;
 import lucene.security.DocumentAuthorizations;
 import lucene.security.DocumentVisibility;
 import lucene.security.DocumentVisibilityEvaluator;
+import lucene.security.document.DocumentVisiblityUtil;
 
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.SortedDocValues;
@@ -39,8 +40,6 @@ public class DefaultAccessLookup implements AccessLookup {
   private final DocumentAuthorizations _readAuthorizations;
   private final String _readField;
   private final String _discoverField;
-  private final SortedDocValues _readFieldSortedDocValues;
-  private final SortedDocValues _discoverFieldSortedDocValues;
   private final DocumentVisibilityEvaluator _readUnionDiscoverVisibilityEvaluator;
   private final DocumentVisibilityEvaluator _readAuthorizationsVisibilityEvaluator;
   private final ConcurrentLinkedHashMap<Integer, DocumentVisibility> _readOrdToDocumentVisibility;
@@ -53,9 +52,17 @@ public class DefaultAccessLookup implements AccessLookup {
     }
   };
 
-  public DefaultAccessLookup(AtomicReader in, Collection<String> readAuthorizations,
-      Collection<String> discoverAuthorizations, String readField, String discoverField, Set<String> discoverableFields)
-      throws IOException {
+  private SortedDocValues _readFieldSortedDocValues;
+  private SortedDocValues _discoverFieldSortedDocValues;
+
+  public DefaultAccessLookup(Collection<String> readAuthorizations, Collection<String> discoverAuthorizations,
+      Set<String> discoverableFields) {
+    this(readAuthorizations, discoverAuthorizations, DocumentVisiblityUtil.READ_FIELD,
+        DocumentVisiblityUtil.DISCOVER_FIELD, discoverableFields);
+  }
+
+  public DefaultAccessLookup(Collection<String> readAuthorizations, Collection<String> discoverAuthorizations,
+      String readField, String discoverField, Set<String> discoverableFields) {
     _discoverableFields = new HashSet<String>(discoverableFields);
     // TODO need to pass in the discover code to change document if needed
     List<String> termAuth = new ArrayList<String>();
@@ -67,8 +74,6 @@ public class DefaultAccessLookup implements AccessLookup {
     _readAuthorizationsVisibilityEvaluator = new DocumentVisibilityEvaluator(_readAuthorizations);
     _readField = readField;
     _discoverField = discoverField;
-    _readFieldSortedDocValues = in.getSortedDocValues(_readField);
-    _discoverFieldSortedDocValues = in.getSortedDocValues(_discoverField);
     _readOrdToDocumentVisibility = new ConcurrentLinkedHashMap.Builder<Integer, DocumentVisibility>()
         .maximumWeightedCapacity(1000).build();
     _discoverOrdToDocumentVisibility = new ConcurrentLinkedHashMap.Builder<Integer, DocumentVisibility>()
@@ -76,9 +81,22 @@ public class DefaultAccessLookup implements AccessLookup {
   }
 
   @Override
+  public AccessLookup clone(AtomicReader in) throws IOException {
+    try {
+      DefaultAccessLookup clone = (DefaultAccessLookup) super.clone();
+      clone._discoverFieldSortedDocValues = in.getSortedDocValues(_discoverField);
+      clone._readFieldSortedDocValues = in.getSortedDocValues(_readField);
+      return clone;
+    } catch (CloneNotSupportedException e) {
+      throw new IOException(e);
+    }
+  }
+
+  @Override
   public boolean hasAccess(TYPE type, int docID) throws IOException {
     BytesRef ref = _ref.get();
     switch (type) {
+    case DOCS_ENUM:
     case LIVEDOCS:
       return readOrDiscoverAccess(ref, docID);
     case DOCUMENT_FETCH_DISCOVER:
@@ -106,13 +124,14 @@ public class DefaultAccessLookup implements AccessLookup {
   }
 
   private boolean discoverAccess(BytesRef ref, int doc) throws IOException {
+    SortedDocValues discoverFieldSortedDocValues = _discoverFieldSortedDocValues;
     // Checking discovery access
-    int ord = _discoverFieldSortedDocValues.getOrd(doc);
+    int ord = discoverFieldSortedDocValues.getOrd(doc);
     if (ord >= 0) {
       // If < 0 means there is no value.
       DocumentVisibility discoverDocumentVisibility = _discoverOrdToDocumentVisibility.get(ord);
       if (discoverDocumentVisibility == null) {
-        _discoverFieldSortedDocValues.get(doc, ref);
+        discoverFieldSortedDocValues.get(doc, ref);
         discoverDocumentVisibility = new DocumentVisibility(ref.utf8ToString());
         _discoverOrdToDocumentVisibility.put(ord, discoverDocumentVisibility);
       }
@@ -124,13 +143,14 @@ public class DefaultAccessLookup implements AccessLookup {
   }
 
   private boolean readAccess(BytesRef ref, int doc) throws IOException {
+    SortedDocValues readFieldSortedDocValues = _readFieldSortedDocValues;
     // Checking read access
-    int ord = _readFieldSortedDocValues.getOrd(doc);
+    int ord = readFieldSortedDocValues.getOrd(doc);
     if (ord >= 0) {
       // If < 0 means there is no value.
       DocumentVisibility readDocumentVisibility = _readOrdToDocumentVisibility.get(ord);
       if (readDocumentVisibility == null) {
-        _readFieldSortedDocValues.get(doc, ref);
+        readFieldSortedDocValues.get(doc, ref);
         readDocumentVisibility = new DocumentVisibility(ref.utf8ToString());
         _readOrdToDocumentVisibility.put(ord, readDocumentVisibility);
       }

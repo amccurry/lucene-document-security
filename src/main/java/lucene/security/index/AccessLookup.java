@@ -18,14 +18,18 @@ package lucene.security.index;
 
 import java.io.IOException;
 
-public interface AccessLookup {
+import org.apache.lucene.index.AtomicReader;
+
+public interface AccessLookup extends Cloneable {
 
   public enum TYPE {
-    LIVEDOCS, DOCUMENT_FETCH_READ, DOCUMENT_FETCH_DISCOVER, NUMERIC_DOC_VALUE, BINARY_DOC_VALUE, SORTED_DOC_VALUE, NORM_VALUE, SORTED_SET_DOC_VALUE
+    LIVEDOCS, DOCUMENT_FETCH_READ, DOCUMENT_FETCH_DISCOVER, NUMERIC_DOC_VALUE, BINARY_DOC_VALUE, SORTED_DOC_VALUE, NORM_VALUE, SORTED_SET_DOC_VALUE, DOCS_ENUM
   }
 
   boolean hasAccess(TYPE type, int docID) throws IOException;
 
   boolean canDiscoverField(String name);
+  
+  AccessLookup clone(AtomicReader in) throws IOException;
 
 }

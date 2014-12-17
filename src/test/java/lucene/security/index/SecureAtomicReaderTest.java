@@ -20,9 +20,7 @@ import static lucene.security.document.DocumentVisiblityUtil.DISCOVER_FIELD;
 import static lucene.security.document.DocumentVisiblityUtil.READ_FIELD;
 import static lucene.security.document.DocumentVisiblityUtil.addDiscoverVisiblity;
 import static lucene.security.document.DocumentVisiblityUtil.addReadVisiblity;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -43,12 +41,22 @@ import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.Bits;
@@ -215,13 +223,67 @@ public class SecureAtomicReaderTest {
     }
   }
 
+  @Test
+  public void testTermWalk() throws IOException, ParseException {
+    SecureAtomicReader secureReader = getSecureReader();
+    Fields fields = secureReader.fields();
+    for (String field : fields) {
+      Terms terms = fields.terms(field);
+      TermsEnum termsEnum = terms.iterator(null);
+      BytesRef ref;
+      while ((ref = termsEnum.next()) != null) {
+        System.out.println(field + " " + ref.utf8ToString());
+        DocsEnum docsEnum = termsEnum.docs(null, null);
+        int doc;
+        while ((doc = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+          System.out.println(field + " " + ref.utf8ToString() + " " + doc);
+        }
+      }
+    }
+    secureReader.close();
+  }
+
+  @Test
+  public void testQuery() throws IOException, ParseException {
+    SecureAtomicReader secureReader = getSecureReader();
+    QueryParser parser = new QueryParser(Version.LUCENE_43, "nothing", new KeywordAnalyzer());
+    Query query = parser.parse("test:test");
+    IndexSearcher searcher = new IndexSearcher(secureReader);
+    TopDocs topDocs = searcher.search(query, 10);
+    assertEquals(3, topDocs.totalHits);
+    {
+      int doc = topDocs.scoreDocs[0].doc;
+      assertEquals(0, doc);
+      Document document = searcher.doc(doc);
+      assertEquals("test", document.get("test"));
+      assertEquals("info", document.get("info"));
+    }
+    {
+      int doc = topDocs.scoreDocs[1].doc;
+      assertEquals(1, doc);
+      Document document = searcher.doc(doc);
+      assertNull(document.get("test"));
+      assertEquals("info", document.get("info"));
+    }
+    {
+      int doc = topDocs.scoreDocs[2].doc;
+      assertEquals(2, doc);
+      Document document = searcher.doc(doc);
+      assertEquals("test", document.get("test"));
+      assertEquals("info", document.get("info"));
+    }
+
+    secureReader.close();
+  }
+
   private SecureAtomicReader getSecureReader() throws IOException {
     AtomicReader baseReader = createReader();
     Set<String> dicoverableFields = new HashSet<String>();
     dicoverableFields.add("info");
-    SecureAtomicReader secureReader = new SecureAtomicReader(baseReader, Arrays.asList("r1"), Arrays.asList("d1"),
+
+    DefaultAccessLookup accessLookup = new DefaultAccessLookup(Arrays.asList("r1"), Arrays.asList("d1"),
         dicoverableFields);
-    return secureReader;
+    return new SecureAtomicReader(baseReader, accessLookup);
   }
 
   private AtomicReader createReader() throws IOException {
@@ -249,6 +311,9 @@ public class SecureAtomicReaderTest {
     Document document = new Document();
     document.add(new StringField("test", "test", Store.YES));
     document.add(new StringField("info", "info", Store.YES));
+    if (i == 3) {
+      document.add(new StringField("shouldnotsee", "shouldnotsee", Store.YES));
+    }
     document.add(new NumericDocValuesField("number", i));
     document.add(new BinaryDocValuesField("bin", new BytesRef(Integer.toString(i).getBytes())));
     document.add(new SortedDocValuesField("sorted", new BytesRef(Integer.toString(i).getBytes())));

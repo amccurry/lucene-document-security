@@ -25,6 +25,8 @@ import lucene.security.index.AccessLookup.TYPE;
 
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.BinaryDocValues;
+import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.FilterAtomicReader;
@@ -32,25 +34,43 @@ import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.index.StoredFieldVisitor;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.automaton.CompiledAutomaton;
 
+/**
+ * The current {@link SecureAtomicReader} will protect access to documents based
+ * on the {@link AccessLookup} object.
+ * 
+ * NOTE: If you are using the {@link Fields} and {@link Terms} with
+ * {@link TermsEnum} to create a type ahead. Make sure that you check that the
+ * {@link TermsEnum} actually points to a single document because the
+ * {@link SecureAtomicReader} will leak terms that users don't have access to
+ * read or discover.
+ */
 public class SecureAtomicReader extends FilterAtomicReader {
 
   private final AccessLookup _accessLookup;
 
-  public SecureAtomicReader(AtomicReader in, Collection<String> readAuthorizations,
+  public static SecureAtomicReader create(AtomicReader in, Collection<String> readAuthorizations,
       Collection<String> discoverAuthorizations, Set<String> discoverableFields) throws IOException {
-    this(in, readAuthorizations, discoverAuthorizations, DocumentVisiblityUtil.READ_FIELD,
+    return create(in, readAuthorizations, discoverAuthorizations, DocumentVisiblityUtil.READ_FIELD,
         DocumentVisiblityUtil.DISCOVER_FIELD, discoverableFields);
   }
 
-  protected SecureAtomicReader(AtomicReader in, Collection<String> readAuthorizations,
+  public static SecureAtomicReader create(AtomicReader in, Collection<String> readAuthorizations,
       Collection<String> discoverAuthorizations, String readField, String discoverField, Set<String> discoverableFields)
       throws IOException {
+    DefaultAccessLookup accessLookup = new DefaultAccessLookup(readAuthorizations, discoverAuthorizations, readField,
+        discoverField, discoverableFields);
+    return new SecureAtomicReader(in, accessLookup);
+  }
+
+  public SecureAtomicReader(AtomicReader in, AccessLookup accessLookup) throws IOException {
     super(in);
-    _accessLookup = new DefaultAccessLookup(in, readAuthorizations, discoverAuthorizations, readField, discoverField,
-        discoverableFields);
+    _accessLookup = accessLookup.clone(in);
   }
 
   @Override
@@ -143,8 +163,7 @@ public class SecureAtomicReader extends FilterAtomicReader {
 
   @Override
   public Fields fields() throws IOException {
-    // use term auth
-    throw new RuntimeException("Not implemented.");
+    return new SecureFields(in.fields(), _accessLookup, maxDoc());
   }
 
   @Override
@@ -282,4 +301,115 @@ public class SecureAtomicReader extends FilterAtomicReader {
     return secureNumericDocValues(in.getNormValues(field), TYPE.NORM_VALUE);
   }
 
+  static class SecureFields extends FilterFields {
+
+    private final int _maxDoc;
+    private final AccessLookup _accessLookup;
+
+    public SecureFields(Fields in, AccessLookup accessLookup, int maxDoc) {
+      super(in);
+      _accessLookup = accessLookup;
+      _maxDoc = maxDoc;
+    }
+
+    @Override
+    public Terms terms(String field) throws IOException {
+      return new SecureTerms(in.terms(field), _accessLookup, _maxDoc);
+    }
+
+  }
+
+  static class SecureTerms extends FilterTerms {
+
+    private final int _maxDoc;
+    private final AccessLookup _accessLookup;
+
+    public SecureTerms(Terms in, AccessLookup accessLookup, int maxDoc) {
+      super(in);
+      _accessLookup = accessLookup;
+      _maxDoc = maxDoc;
+    }
+
+    @Override
+    public TermsEnum iterator(TermsEnum reuse) throws IOException {
+      return new SecureTermsEnum(in.iterator(reuse), _accessLookup, _maxDoc);
+    }
+
+    @Override
+    public TermsEnum intersect(CompiledAutomaton compiled, BytesRef startTerm) throws IOException {
+      return new SecureTermsEnum(in.intersect(compiled, startTerm), _accessLookup, _maxDoc);
+    }
+  }
+
+  static class SecureTermsEnum extends FilterTermsEnum {
+
+    private final int _maxDoc;
+    private final AccessLookup _accessLookup;
+
+    public SecureTermsEnum(TermsEnum in, AccessLookup accessLookup, int maxDoc) {
+      super(in);
+      _accessLookup = accessLookup;
+      _maxDoc = maxDoc;
+    }
+
+    @Override
+    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
+      Bits secureLiveDocs = getSecureLiveDocs(liveDocs, _maxDoc, _accessLookup);
+      return in.docs(secureLiveDocs, reuse, flags);
+    }
+
+    @Override
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags)
+        throws IOException {
+      Bits secureLiveDocs = getSecureLiveDocs(liveDocs, _maxDoc, _accessLookup);
+      return in.docsAndPositions(secureLiveDocs, reuse, flags);
+    }
+
+  }
+
+  public static Bits getSecureLiveDocs(Bits bits, int maxDoc, final AccessLookup accessLookup) {
+    final Bits liveDocs;
+    if (bits == null) {
+      liveDocs = getMatchAll(maxDoc);
+    } else {
+      liveDocs = bits;
+    }
+    final int length = liveDocs.length();
+    Bits secureLiveDocs = new Bits() {
+      @Override
+      public boolean get(int index) {
+        if (liveDocs.get(index)) {
+          try {
+            if (accessLookup.hasAccess(TYPE.DOCS_ENUM, index)) {
+              return true;
+            }
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+        }
+        return false;
+      }
+
+      @Override
+      public int length() {
+        return length;
+      }
+    };
+    return secureLiveDocs;
+  }
+
+  public static Bits getMatchAll(final int length) {
+    return new Bits() {
+
+      @Override
+      public int length() {
+        return length;
+      }
+
+      @Override
+      public boolean get(int index) {
+        return true;
+      }
+    };
+  }
 }
