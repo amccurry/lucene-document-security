@@ -16,8 +16,6 @@
  */
 package lucene.security.accumulo;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 
@@ -86,7 +84,7 @@ public class ArrayByteSequence extends ByteSequence implements Serializable {
    *          string to represent as bytes
    */
   public ArrayByteSequence(String s) {
-    this(s.getBytes(UTF_8));
+    this(UTFUtil.toBytes(s));
   }
 
   /**
@@ -168,6 +166,6 @@ public class ArrayByteSequence extends ByteSequence implements Serializable {
   }
 
   public String toString() {
-    return new String(data, offset, length, UTF_8);
+    return UTFUtil.toString(data, offset, length);
   }
 }

@@ -16,8 +16,6 @@
  */
 package lucene.security.accumulo;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import java.text.ParseException;
 
 /**
@@ -43,7 +41,7 @@ public class VisibilityParseException extends ParseException {
    */
   public VisibilityParseException(String reason, byte[] visibility, int errorOffset) {
     super(reason, errorOffset);
-    this.visibility = new String(visibility, UTF_8);
+    this.visibility = UTFUtil.toString(visibility);
   }
 
   @Override
