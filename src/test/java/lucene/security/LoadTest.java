@@ -44,12 +44,24 @@ import org.apache.lucene.util.Version;
 
 public class LoadTest {
 
+  private static final long MAX_DOCS = 100000000;
+
   public static void main(String[] args) throws IOException {
     AccessControlFactory accessControlFactory = new FilterAccessControlFactory();
-    File file = new File("./src/test/resouces/loadtestindex");
+    // AccessControlFactory accessControlFactory = new
+    // DocValueAccessControlFactory();
+    runTest(accessControlFactory);
+
+  }
+
+  private static void runTest(AccessControlFactory accessControlFactory) throws IOException {
+    File file = new File("./src/test/resouces/loadtestindex-" + accessControlFactory.getClass().getName());
     FSDirectory directory = FSDirectory.open(file);
     if (!file.exists() || !DirectoryReader.indexExists(directory)) {
+      long s = System.nanoTime();
       createIndex(directory, accessControlFactory);
+      long e = System.nanoTime();
+      System.out.println("Index Creation Time [" + (e - s) / 1000000.0 + "]");
     }
     DirectoryReader reader = DirectoryReader.open(directory);
     SecureDirectoryReader secureReader1 = SecureDirectoryReader.create(accessControlFactory, reader,
@@ -71,13 +83,13 @@ public class LoadTest {
     runSearch(secureReader1, query);
     hitEnterToContinue();
     runSearch(secureReader2, query);
-
   }
 
   private static void hitEnterToContinue() throws IOException {
-//    System.out.println("Hit Enter.");
-//    BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-//    reader.readLine();
+    // System.out.println("Hit Enter.");
+    // BufferedReader reader = new BufferedReader(new
+    // InputStreamReader(System.in));
+    // reader.readLine();
   }
 
   private static void runSearch(DirectoryReader reader, MatchAllDocsQuery query) throws IOException {
@@ -94,7 +106,7 @@ public class LoadTest {
 
     AccessControlWriter accessControlWriter = accessControlFactory.getWriter();
     Random random = new Random(1);
-    for (int i = 0; i < 10000000; i++) {
+    for (long i = 0; i < MAX_DOCS; i++) {
       if (i % 1000000 == 0) {
         System.out.println("Building " + i);
       }
@@ -104,7 +116,7 @@ public class LoadTest {
     writer.close();
   }
 
-  private static Iterable<IndexableField> getDoc(int i, Random random) {
+  private static Iterable<IndexableField> getDoc(long i, Random random) {
     Document document = new Document();
     document.add(new StringField("f1", Integer.toString(random.nextInt(1000000)), Store.YES));
     return document;
