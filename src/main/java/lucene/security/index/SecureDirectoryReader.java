@@ -26,27 +26,21 @@ import org.apache.lucene.index.FilterDirectoryReader;
 
 public class SecureDirectoryReader extends FilterDirectoryReader {
 
-  public static SecureDirectoryReader create(DirectoryReader in, Collection<String> readAuthorizations,
-      Collection<String> discoverAuthorizations, Set<String> discoverableFields) throws IOException {
-    return create(in, readAuthorizations, discoverAuthorizations, AccessLookup.READ_FIELD,
-        AccessLookup.DISCOVER_FIELD, discoverableFields);
-  }
-
-  public static SecureDirectoryReader create(DirectoryReader in, Collection<String> readAuthorizations,
-      Collection<String> discoverAuthorizations, String readField, String discoverField, Set<String> discoverableFields)
+  public static SecureDirectoryReader create(AccessControlFactory accessControlFactory, DirectoryReader in,
+      Collection<String> readAuthorizations, Collection<String> discoverAuthorizations, Set<String> discoverableFields)
       throws IOException {
-    DocValueAccessLookup accessLookup = new DocValueAccessLookup(readAuthorizations, discoverAuthorizations, readField,
-        discoverField, discoverableFields);
-    return new SecureDirectoryReader(in, accessLookup);
+    AccessControlReader accessControlReader = accessControlFactory.getReader(readAuthorizations,
+        discoverAuthorizations, discoverableFields);
+    return new SecureDirectoryReader(in, accessControlReader);
   }
 
-  public SecureDirectoryReader(DirectoryReader in, final AccessLookup accessLookup) {
+  public SecureDirectoryReader(DirectoryReader in, final AccessControlReader accessControlReader) {
     super(in, new SubReaderWrapper() {
 
       @Override
       public AtomicReader wrap(AtomicReader reader) {
         try {
-          return new SecureAtomicReader(reader, accessLookup);
+          return new SecureAtomicReader(reader, accessControlReader);
         } catch (IOException e) {
           throw new RuntimeException(e);
         }

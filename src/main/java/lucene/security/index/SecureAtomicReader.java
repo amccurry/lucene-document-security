@@ -20,8 +20,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Set;
 
-import lucene.security.index.AccessLookup.TYPE;
-
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DocsAndPositionsEnum;
@@ -41,7 +39,7 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
 
 /**
  * The current {@link SecureAtomicReader} will protect access to documents based
- * on the {@link AccessLookup} object.
+ * on the {@link AccessControl} object.
  * 
  * NOTE: If you are using the {@link Fields} and {@link Terms} with
  * {@link TermsEnum} to create a type ahead. Make sure that you check that the
@@ -51,25 +49,17 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
  */
 public class SecureAtomicReader extends FilterAtomicReader {
 
-  private final AccessLookup _accessLookup;
+  private final AccessControlReader _accessControl;
 
-  public static SecureAtomicReader create(AtomicReader in, Collection<String> readAuthorizations,
+  public static SecureAtomicReader create(AccessControlFactory accessControlFactory, AtomicReader in, Collection<String> readAuthorizations,
       Collection<String> discoverAuthorizations, Set<String> discoverableFields) throws IOException {
-    return create(in, readAuthorizations, discoverAuthorizations, AccessLookup.READ_FIELD,
-        AccessLookup.DISCOVER_FIELD, discoverableFields);
+    AccessControlReader accessControlReader = accessControlFactory.getReader(readAuthorizations, discoverAuthorizations, discoverableFields);
+    return new SecureAtomicReader(in, accessControlReader);
   }
 
-  public static SecureAtomicReader create(AtomicReader in, Collection<String> readAuthorizations,
-      Collection<String> discoverAuthorizations, String readField, String discoverField, Set<String> discoverableFields)
-      throws IOException {
-    DocValueAccessLookup accessLookup = new DocValueAccessLookup(readAuthorizations, discoverAuthorizations, readField,
-        discoverField, discoverableFields);
-    return new SecureAtomicReader(in, accessLookup);
-  }
-
-  public SecureAtomicReader(AtomicReader in, AccessLookup accessLookup) throws IOException {
+  public SecureAtomicReader(AtomicReader in, AccessControlReader accessControlReader) throws IOException {
     super(in);
-    _accessLookup = accessLookup.clone(in);
+    _accessControl = accessControlReader.clone(in);
   }
 
   @Override
@@ -83,7 +73,7 @@ public class SecureAtomicReader extends FilterAtomicReader {
         if (liveDocs == null || liveDocs.get(index)) {
           // Need to check access
           try {
-            if (_accessLookup.hasAccess(TYPE.LIVEDOCS, index)) {
+            if (_accessControl.hasAccess(ReadType.LIVEDOCS, index)) {
               return true;
             }
           } catch (IOException e) {
@@ -109,16 +99,16 @@ public class SecureAtomicReader extends FilterAtomicReader {
 
   @Override
   public void document(int docID, final StoredFieldVisitor visitor) throws IOException {
-    if (_accessLookup.hasAccess(TYPE.DOCUMENT_FETCH_READ, docID)) {
+    if (_accessControl.hasAccess(ReadType.DOCUMENT_FETCH_READ, docID)) {
       in.document(docID, visitor);
       return;
     }
-    if (_accessLookup.hasAccess(TYPE.DOCUMENT_FETCH_DISCOVER, docID)) {
+    if (_accessControl.hasAccess(ReadType.DOCUMENT_FETCH_DISCOVER, docID)) {
       // TODO add way to perform code when visitor runs here....
       in.document(docID, new StoredFieldVisitor() {
         @Override
         public Status needsField(FieldInfo fieldInfo) throws IOException {
-          if (_accessLookup.canDiscoverField(fieldInfo.name)) {
+          if (_accessControl.canDiscoverField(fieldInfo.name)) {
             return visitor.needsField(fieldInfo);
           } else {
             return Status.NO;
@@ -162,15 +152,15 @@ public class SecureAtomicReader extends FilterAtomicReader {
 
   @Override
   public Fields fields() throws IOException {
-    return new SecureFields(in.fields(), _accessLookup, maxDoc());
+    return new SecureFields(in.fields(), _accessControl, maxDoc());
   }
 
   @Override
   public NumericDocValues getNumericDocValues(String field) throws IOException {
-    return secureNumericDocValues(in.getNumericDocValues(field), TYPE.NUMERIC_DOC_VALUE);
+    return secureNumericDocValues(in.getNumericDocValues(field), ReadType.NUMERIC_DOC_VALUE);
   }
 
-  private NumericDocValues secureNumericDocValues(final NumericDocValues numericDocValues, final TYPE type) {
+  private NumericDocValues secureNumericDocValues(final NumericDocValues numericDocValues, final ReadType type) {
     if (numericDocValues == null) {
       return null;
     }
@@ -179,7 +169,7 @@ public class SecureAtomicReader extends FilterAtomicReader {
       @Override
       public long get(int docID) {
         try {
-          if (_accessLookup.hasAccess(type, docID)) {
+          if (_accessControl.hasAccess(type, docID)) {
             return numericDocValues.get(docID);
           }
           return 0L; // Default missing value.
@@ -201,7 +191,7 @@ public class SecureAtomicReader extends FilterAtomicReader {
       @Override
       public void get(int docID, BytesRef result) {
         try {
-          if (_accessLookup.hasAccess(TYPE.BINARY_DOC_VALUE, docID)) {
+          if (_accessControl.hasAccess(ReadType.BINARY_DOC_VALUE, docID)) {
             binaryDocValues.get(docID, result);
             return;
           }
@@ -237,7 +227,7 @@ public class SecureAtomicReader extends FilterAtomicReader {
       @Override
       public int getOrd(int docID) {
         try {
-          if (_accessLookup.hasAccess(TYPE.SORTED_DOC_VALUE, docID)) {
+          if (_accessControl.hasAccess(ReadType.SORTED_DOC_VALUE, docID)) {
             return sortedDocValues.getOrd(docID);
           }
           return -1; // Default missing value.
@@ -261,7 +251,7 @@ public class SecureAtomicReader extends FilterAtomicReader {
       @Override
       public void setDocument(int docID) {
         try {
-          if (_access = _accessLookup.hasAccess(TYPE.SORTED_SET_DOC_VALUE, docID)) {
+          if (_access = _accessControl.hasAccess(ReadType.SORTED_SET_DOC_VALUE, docID)) {
             sortedSetDocValues.setDocument(docID);
           }
         } catch (IOException e) {
@@ -297,23 +287,23 @@ public class SecureAtomicReader extends FilterAtomicReader {
 
   @Override
   public NumericDocValues getNormValues(String field) throws IOException {
-    return secureNumericDocValues(in.getNormValues(field), TYPE.NORM_VALUE);
+    return secureNumericDocValues(in.getNormValues(field), ReadType.NORM_VALUE);
   }
 
   static class SecureFields extends FilterFields {
 
     private final int _maxDoc;
-    private final AccessLookup _accessLookup;
+    private final AccessControlReader _accessControlReader;
 
-    public SecureFields(Fields in, AccessLookup accessLookup, int maxDoc) {
+    public SecureFields(Fields in, AccessControlReader accessControlReader, int maxDoc) {
       super(in);
-      _accessLookup = accessLookup;
+      _accessControlReader = accessControlReader;
       _maxDoc = maxDoc;
     }
 
     @Override
     public Terms terms(String field) throws IOException {
-      return new SecureTerms(in.terms(field), _accessLookup, _maxDoc);
+      return new SecureTerms(in.terms(field), _accessControlReader, _maxDoc);
     }
 
   }
@@ -321,52 +311,52 @@ public class SecureAtomicReader extends FilterAtomicReader {
   static class SecureTerms extends FilterTerms {
 
     private final int _maxDoc;
-    private final AccessLookup _accessLookup;
+    private final AccessControlReader _accessControlReader;
 
-    public SecureTerms(Terms in, AccessLookup accessLookup, int maxDoc) {
+    public SecureTerms(Terms in, AccessControlReader accessControlReader, int maxDoc) {
       super(in);
-      _accessLookup = accessLookup;
+      _accessControlReader = accessControlReader;
       _maxDoc = maxDoc;
     }
 
     @Override
     public TermsEnum iterator(TermsEnum reuse) throws IOException {
-      return new SecureTermsEnum(in.iterator(reuse), _accessLookup, _maxDoc);
+      return new SecureTermsEnum(in.iterator(reuse), _accessControlReader, _maxDoc);
     }
 
     @Override
     public TermsEnum intersect(CompiledAutomaton compiled, BytesRef startTerm) throws IOException {
-      return new SecureTermsEnum(in.intersect(compiled, startTerm), _accessLookup, _maxDoc);
+      return new SecureTermsEnum(in.intersect(compiled, startTerm), _accessControlReader, _maxDoc);
     }
   }
 
   static class SecureTermsEnum extends FilterTermsEnum {
 
     private final int _maxDoc;
-    private final AccessLookup _accessLookup;
+    private final AccessControlReader _accessControlReader;
 
-    public SecureTermsEnum(TermsEnum in, AccessLookup accessLookup, int maxDoc) {
+    public SecureTermsEnum(TermsEnum in, AccessControlReader accessControlReader, int maxDoc) {
       super(in);
-      _accessLookup = accessLookup;
+      _accessControlReader = accessControlReader;
       _maxDoc = maxDoc;
     }
 
     @Override
     public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
-      Bits secureLiveDocs = getSecureLiveDocs(liveDocs, _maxDoc, _accessLookup);
+      Bits secureLiveDocs = getSecureLiveDocs(liveDocs, _maxDoc, _accessControlReader);
       return in.docs(secureLiveDocs, reuse, flags);
     }
 
     @Override
     public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags)
         throws IOException {
-      Bits secureLiveDocs = getSecureLiveDocs(liveDocs, _maxDoc, _accessLookup);
+      Bits secureLiveDocs = getSecureLiveDocs(liveDocs, _maxDoc, _accessControlReader);
       return in.docsAndPositions(secureLiveDocs, reuse, flags);
     }
 
   }
 
-  public static Bits getSecureLiveDocs(Bits bits, int maxDoc, final AccessLookup accessLookup) {
+  public static Bits getSecureLiveDocs(Bits bits, int maxDoc, final AccessControlReader accessControlReader) {
     final Bits liveDocs;
     if (bits == null) {
       liveDocs = getMatchAll(maxDoc);
@@ -379,7 +369,7 @@ public class SecureAtomicReader extends FilterAtomicReader {
       public boolean get(int index) {
         if (liveDocs.get(index)) {
           try {
-            if (accessLookup.hasAccess(TYPE.DOCS_ENUM, index)) {
+            if (accessControlReader.hasAccess(ReadType.DOCS_ENUM, index)) {
               return true;
             }
           } catch (IOException e) {

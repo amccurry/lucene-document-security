@@ -14,19 +14,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package lucene.security.document;
+package lucene.security.index;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.util.BytesRef;
 
-public class DocumentVisiblityUtil {
+public abstract class AccessControlWriter {
+  
+  public abstract Iterable<IndexableField> addReadVisiblity(String read, Iterable<IndexableField> fields);
 
+  public abstract Iterable<IndexableField> addDiscoverVisiblity(String discover, Iterable<IndexableField> fields);
 
-
+  protected Iterable<IndexableField> addField(Iterable<IndexableField> fields, IndexableField field,
+      StoredField storedField) {
+    if (fields instanceof Document) {
+      Document document = (Document) fields;
+      document.add(field);
+      document.add(storedField);
+      return document;
+    }
+    List<IndexableField> list = new ArrayList<IndexableField>();
+    for (IndexableField indexableField : fields) {
+      list.add(indexableField);
+    }
+    list.add(field);
+    list.add(storedField);
+    return list;
+  }
 }

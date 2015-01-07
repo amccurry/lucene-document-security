@@ -16,10 +16,6 @@
  */
 package lucene.security.index;
 
-import static lucene.security.index.AccessLookup.DISCOVER_FIELD;
-import static lucene.security.index.AccessLookup.READ_FIELD;
-import static lucene.security.index.DocValueAccessLookup.addDiscoverVisiblity;
-import static lucene.security.index.DocValueAccessLookup.addReadVisiblity;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -69,6 +65,8 @@ import org.junit.Test;
 
 public class SecureAtomicReaderTest {
 
+  private AccessControlFactory _accessControlFactory = new DocValueAccessControlFactory();
+
   @Test
   public void testLiveDocs() throws IOException {
     SecureAtomicReader secureReader = getSecureReader();
@@ -89,8 +87,8 @@ public class SecureAtomicReaderTest {
       Set<String> allowed = new HashSet<String>();
       allowed.add("test");
       allowed.add("info");
-      allowed.add(DISCOVER_FIELD);
-      allowed.add(READ_FIELD);
+      allowed.add(_accessControlFactory.getDiscoverFieldName());
+      allowed.add(_accessControlFactory.getReadFieldName());
       for (IndexableField field : document) {
         assertTrue(allowed.contains(field.name()));
       }
@@ -108,8 +106,8 @@ public class SecureAtomicReaderTest {
       Set<String> allowed = new HashSet<String>();
       allowed.add("test");
       allowed.add("info");
-      allowed.add(DISCOVER_FIELD);
-      allowed.add(READ_FIELD);
+      allowed.add(_accessControlFactory.getDiscoverFieldName());
+      allowed.add(_accessControlFactory.getReadFieldName());
       for (IndexableField field : document) {
         assertTrue(allowed.contains(field.name()));
       }
@@ -283,20 +281,24 @@ public class SecureAtomicReaderTest {
     AtomicReader baseReader = createReader();
     Set<String> dicoverableFields = new HashSet<String>();
     dicoverableFields.add("info");
-
-    DocValueAccessLookup accessLookup = new DocValueAccessLookup(Arrays.asList("r1"), Arrays.asList("d1"),
+    AccessControlReader accessControlReader = _accessControlFactory.getReader(Arrays.asList("r1"), Arrays.asList("d1"),
         dicoverableFields);
-    return new SecureAtomicReader(baseReader, accessLookup);
+    return new SecureAtomicReader(baseReader, accessControlReader);
   }
 
   private AtomicReader createReader() throws IOException {
     IndexWriterConfig conf = new IndexWriterConfig(Version.LUCENE_43, new KeywordAnalyzer());
     Directory dir = new RAMDirectory();
     IndexWriter writer = new IndexWriter(dir, conf);
-    writer.addDocument(addDiscoverVisiblity("d1", addReadVisiblity("r1", getDoc(0))));
-    writer.addDocument(addDiscoverVisiblity("d1", addReadVisiblity("r2", getDoc(1))));
-    writer.addDocument(addDiscoverVisiblity("d2", addReadVisiblity("r1", getDoc(2))));
-    writer.addDocument(addDiscoverVisiblity("d2", addReadVisiblity("r2", getDoc(3))));
+    AccessControlWriter accessControlWriter = _accessControlFactory.getWriter();
+    writer.addDocument(accessControlWriter.addDiscoverVisiblity("d1",
+        accessControlWriter.addReadVisiblity("r1", getDoc(0))));
+    writer.addDocument(accessControlWriter.addDiscoverVisiblity("d1",
+        accessControlWriter.addReadVisiblity("r2", getDoc(1))));
+    writer.addDocument(accessControlWriter.addDiscoverVisiblity("d2",
+        accessControlWriter.addReadVisiblity("r1", getDoc(2))));
+    writer.addDocument(accessControlWriter.addDiscoverVisiblity("d2",
+        accessControlWriter.addReadVisiblity("r2", getDoc(3))));
     writer.close();
 
     DirectoryReader reader = DirectoryReader.open(dir);
