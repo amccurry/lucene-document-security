@@ -20,16 +20,19 @@ import java.io.IOException;
 
 import org.apache.lucene.index.AtomicReader;
 
-public interface AccessLookup extends Cloneable {
+public abstract class AccessLookup implements Cloneable {
+
+  public static final String DISCOVER_FIELD = "_discover_";
+  public static final String READ_FIELD = "_read_";
 
   public enum TYPE {
     LIVEDOCS, DOCUMENT_FETCH_READ, DOCUMENT_FETCH_DISCOVER, NUMERIC_DOC_VALUE, BINARY_DOC_VALUE, SORTED_DOC_VALUE, NORM_VALUE, SORTED_SET_DOC_VALUE, DOCS_ENUM
   }
 
-  boolean hasAccess(TYPE type, int docID) throws IOException;
+  public abstract boolean hasAccess(TYPE type, int docID) throws IOException;
 
-  boolean canDiscoverField(String name);
-  
-  AccessLookup clone(AtomicReader in) throws IOException;
+  public abstract boolean canDiscoverField(String name);
+
+  public abstract AccessLookup clone(AtomicReader in) throws IOException;
 
 }

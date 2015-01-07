@@ -20,8 +20,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Set;
 
-import lucene.security.document.DocumentVisiblityUtil;
-
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FilterDirectoryReader;
@@ -30,14 +28,14 @@ public class SecureDirectoryReader extends FilterDirectoryReader {
 
   public static SecureDirectoryReader create(DirectoryReader in, Collection<String> readAuthorizations,
       Collection<String> discoverAuthorizations, Set<String> discoverableFields) throws IOException {
-    return create(in, readAuthorizations, discoverAuthorizations, DocumentVisiblityUtil.READ_FIELD,
-        DocumentVisiblityUtil.DISCOVER_FIELD, discoverableFields);
+    return create(in, readAuthorizations, discoverAuthorizations, AccessLookup.READ_FIELD,
+        AccessLookup.DISCOVER_FIELD, discoverableFields);
   }
 
   public static SecureDirectoryReader create(DirectoryReader in, Collection<String> readAuthorizations,
       Collection<String> discoverAuthorizations, String readField, String discoverField, Set<String> discoverableFields)
       throws IOException {
-    DefaultAccessLookup accessLookup = new DefaultAccessLookup(readAuthorizations, discoverAuthorizations, readField,
+    DocValueAccessLookup accessLookup = new DocValueAccessLookup(readAuthorizations, discoverAuthorizations, readField,
         discoverField, discoverableFields);
     return new SecureDirectoryReader(in, accessLookup);
   }

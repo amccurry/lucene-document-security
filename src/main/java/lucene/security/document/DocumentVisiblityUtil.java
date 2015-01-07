@@ -27,38 +27,6 @@ import org.apache.lucene.util.BytesRef;
 
 public class DocumentVisiblityUtil {
 
-  public static final String DISCOVER_FIELD = "_discover_";
-  public static final String READ_FIELD = "_read_";
 
-  public static Iterable<IndexableField> addReadVisiblity(String read, Iterable<IndexableField> fields) {
-    BytesRef value = new BytesRef(read);
-    SortedDocValuesField docValueField = new SortedDocValuesField(READ_FIELD, value);
-    StoredField storedField = new StoredField(READ_FIELD, value);
-    return addField(fields, docValueField, storedField);
-  }
-
-  public static Iterable<IndexableField> addDiscoverVisiblity(String discover, Iterable<IndexableField> fields) {
-    BytesRef value = new BytesRef(discover);
-    SortedDocValuesField docValueField = new SortedDocValuesField(DISCOVER_FIELD, value);
-    StoredField storedField = new StoredField(DISCOVER_FIELD, value);
-    return addField(fields, docValueField, storedField);
-  }
-
-  private static Iterable<IndexableField> addField(Iterable<IndexableField> fields, SortedDocValuesField field,
-      StoredField storedField) {
-    if (fields instanceof Document) {
-      Document document = (Document) fields;
-      document.add(field);
-      document.add(storedField);
-      return document;
-    }
-    List<IndexableField> list = new ArrayList<IndexableField>();
-    for (IndexableField indexableField : fields) {
-      list.add(indexableField);
-    }
-    list.add(field);
-    list.add(storedField);
-    return list;
-  }
 
 }

@@ -26,15 +26,18 @@ import java.util.Set;
 import lucene.security.DocumentAuthorizations;
 import lucene.security.DocumentVisibility;
 import lucene.security.DocumentVisibilityEvaluator;
-import lucene.security.document.DocumentVisiblityUtil;
 
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.SortedDocValuesField;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.util.BytesRef;
 
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap;
 
-public class DefaultAccessLookup implements AccessLookup {
+public class DocValueAccessLookup extends AccessLookup {
 
   private final DocumentAuthorizations _readUnionDiscoverAuthorizations;
   private final DocumentAuthorizations _readAuthorizations;
@@ -55,13 +58,12 @@ public class DefaultAccessLookup implements AccessLookup {
   private SortedDocValues _readFieldSortedDocValues;
   private SortedDocValues _discoverFieldSortedDocValues;
 
-  public DefaultAccessLookup(Collection<String> readAuthorizations, Collection<String> discoverAuthorizations,
+  public DocValueAccessLookup(Collection<String> readAuthorizations, Collection<String> discoverAuthorizations,
       Set<String> discoverableFields) {
-    this(readAuthorizations, discoverAuthorizations, DocumentVisiblityUtil.READ_FIELD,
-        DocumentVisiblityUtil.DISCOVER_FIELD, discoverableFields);
+    this(readAuthorizations, discoverAuthorizations, READ_FIELD, DISCOVER_FIELD, discoverableFields);
   }
 
-  public DefaultAccessLookup(Collection<String> readAuthorizations, Collection<String> discoverAuthorizations,
+  public DocValueAccessLookup(Collection<String> readAuthorizations, Collection<String> discoverAuthorizations,
       String readField, String discoverField, Set<String> discoverableFields) {
     _discoverableFields = new HashSet<String>(discoverableFields);
     // TODO need to pass in the discover code to change document if needed
@@ -83,7 +85,7 @@ public class DefaultAccessLookup implements AccessLookup {
   @Override
   public AccessLookup clone(AtomicReader in) throws IOException {
     try {
-      DefaultAccessLookup clone = (DefaultAccessLookup) super.clone();
+      DocValueAccessLookup clone = (DocValueAccessLookup) super.clone();
       clone._discoverFieldSortedDocValues = in.getSortedDocValues(_discoverField);
       clone._readFieldSortedDocValues = in.getSortedDocValues(_readField);
       return clone;
@@ -167,4 +169,34 @@ public class DefaultAccessLookup implements AccessLookup {
     return _discoverableFields.contains(name);
   }
 
+  public static Iterable<IndexableField> addReadVisiblity(String read, Iterable<IndexableField> fields) {
+    BytesRef value = new BytesRef(read);
+    SortedDocValuesField docValueField = new SortedDocValuesField(READ_FIELD, value);
+    StoredField storedField = new StoredField(READ_FIELD, value);
+    return addField(fields, docValueField, storedField);
+  }
+
+  public static Iterable<IndexableField> addDiscoverVisiblity(String discover, Iterable<IndexableField> fields) {
+    BytesRef value = new BytesRef(discover);
+    SortedDocValuesField docValueField = new SortedDocValuesField(DISCOVER_FIELD, value);
+    StoredField storedField = new StoredField(DISCOVER_FIELD, value);
+    return addField(fields, docValueField, storedField);
+  }
+
+  private static Iterable<IndexableField> addField(Iterable<IndexableField> fields, SortedDocValuesField field,
+      StoredField storedField) {
+    if (fields instanceof Document) {
+      Document document = (Document) fields;
+      document.add(field);
+      document.add(storedField);
+      return document;
+    }
+    List<IndexableField> list = new ArrayList<IndexableField>();
+    for (IndexableField indexableField : fields) {
+      list.add(indexableField);
+    }
+    list.add(field);
+    list.add(storedField);
+    return list;
+  }
 }

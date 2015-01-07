@@ -16,11 +16,14 @@
  */
 package lucene.security.index;
 
-import static lucene.security.document.DocumentVisiblityUtil.DISCOVER_FIELD;
-import static lucene.security.document.DocumentVisiblityUtil.READ_FIELD;
-import static lucene.security.document.DocumentVisiblityUtil.addDiscoverVisiblity;
-import static lucene.security.document.DocumentVisiblityUtil.addReadVisiblity;
-import static org.junit.Assert.*;
+import static lucene.security.index.AccessLookup.DISCOVER_FIELD;
+import static lucene.security.index.AccessLookup.READ_FIELD;
+import static lucene.security.index.DocValueAccessLookup.addDiscoverVisiblity;
+import static lucene.security.index.DocValueAccessLookup.addReadVisiblity;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -281,7 +284,7 @@ public class SecureAtomicReaderTest {
     Set<String> dicoverableFields = new HashSet<String>();
     dicoverableFields.add("info");
 
-    DefaultAccessLookup accessLookup = new DefaultAccessLookup(Arrays.asList("r1"), Arrays.asList("d1"),
+    DocValueAccessLookup accessLookup = new DocValueAccessLookup(Arrays.asList("r1"), Arrays.asList("d1"),
         dicoverableFields);
     return new SecureAtomicReader(baseReader, accessLookup);
   }

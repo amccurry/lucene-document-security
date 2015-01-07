@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Set;
 
-import lucene.security.document.DocumentVisiblityUtil;
 import lucene.security.index.AccessLookup.TYPE;
 
 import org.apache.lucene.index.AtomicReader;
@@ -56,14 +55,14 @@ public class SecureAtomicReader extends FilterAtomicReader {
 
   public static SecureAtomicReader create(AtomicReader in, Collection<String> readAuthorizations,
       Collection<String> discoverAuthorizations, Set<String> discoverableFields) throws IOException {
-    return create(in, readAuthorizations, discoverAuthorizations, DocumentVisiblityUtil.READ_FIELD,
-        DocumentVisiblityUtil.DISCOVER_FIELD, discoverableFields);
+    return create(in, readAuthorizations, discoverAuthorizations, AccessLookup.READ_FIELD,
+        AccessLookup.DISCOVER_FIELD, discoverableFields);
   }
 
   public static SecureAtomicReader create(AtomicReader in, Collection<String> readAuthorizations,
       Collection<String> discoverAuthorizations, String readField, String discoverField, Set<String> discoverableFields)
       throws IOException {
-    DefaultAccessLookup accessLookup = new DefaultAccessLookup(readAuthorizations, discoverAuthorizations, readField,
+    DocValueAccessLookup accessLookup = new DocValueAccessLookup(readAuthorizations, discoverAuthorizations, readField,
         discoverField, discoverableFields);
     return new SecureAtomicReader(in, accessLookup);
   }
