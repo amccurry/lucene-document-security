@@ -50,7 +50,6 @@ public class SecureDirectoryReader extends FilterDirectoryReader {
 
   @Override
   protected DirectoryReader doWrapDirectoryReader(DirectoryReader in) {
-    System.out.println(in.getClass());
     if (in instanceof SecureDirectoryReader) {
       return in;
     }

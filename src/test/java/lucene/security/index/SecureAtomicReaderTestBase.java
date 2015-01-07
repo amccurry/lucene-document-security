@@ -63,9 +63,9 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Version;
 import org.junit.Test;
 
-public class SecureAtomicReaderTest {
+public abstract class SecureAtomicReaderTestBase {
 
-  private AccessControlFactory _accessControlFactory = new DocValueAccessControlFactory();
+  public abstract AccessControlFactory getAccessControlFactory();
 
   @Test
   public void testLiveDocs() throws IOException {
@@ -87,8 +87,8 @@ public class SecureAtomicReaderTest {
       Set<String> allowed = new HashSet<String>();
       allowed.add("test");
       allowed.add("info");
-      allowed.add(_accessControlFactory.getDiscoverFieldName());
-      allowed.add(_accessControlFactory.getReadFieldName());
+      allowed.add(getAccessControlFactory().getDiscoverFieldName());
+      allowed.add(getAccessControlFactory().getReadFieldName());
       for (IndexableField field : document) {
         assertTrue(allowed.contains(field.name()));
       }
@@ -106,8 +106,8 @@ public class SecureAtomicReaderTest {
       Set<String> allowed = new HashSet<String>();
       allowed.add("test");
       allowed.add("info");
-      allowed.add(_accessControlFactory.getDiscoverFieldName());
-      allowed.add(_accessControlFactory.getReadFieldName());
+      allowed.add(getAccessControlFactory().getDiscoverFieldName());
+      allowed.add(getAccessControlFactory().getReadFieldName());
       for (IndexableField field : document) {
         assertTrue(allowed.contains(field.name()));
       }
@@ -281,8 +281,8 @@ public class SecureAtomicReaderTest {
     AtomicReader baseReader = createReader();
     Set<String> dicoverableFields = new HashSet<String>();
     dicoverableFields.add("info");
-    AccessControlReader accessControlReader = _accessControlFactory.getReader(Arrays.asList("r1"), Arrays.asList("d1"),
-        dicoverableFields);
+    AccessControlReader accessControlReader = getAccessControlFactory().getReader(Arrays.asList("r1"),
+        Arrays.asList("d1"), dicoverableFields);
     return new SecureAtomicReader(baseReader, accessControlReader);
   }
 
@@ -290,7 +290,7 @@ public class SecureAtomicReaderTest {
     IndexWriterConfig conf = new IndexWriterConfig(Version.LUCENE_43, new KeywordAnalyzer());
     Directory dir = new RAMDirectory();
     IndexWriter writer = new IndexWriter(dir, conf);
-    AccessControlWriter accessControlWriter = _accessControlFactory.getWriter();
+    AccessControlWriter accessControlWriter = getAccessControlFactory().getWriter();
     writer.addDocument(accessControlWriter.addDiscoverVisiblity("d1",
         accessControlWriter.addReadVisiblity("r1", getDoc(0))));
     writer.addDocument(accessControlWriter.addDiscoverVisiblity("d1",

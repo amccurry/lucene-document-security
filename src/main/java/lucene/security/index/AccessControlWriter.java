@@ -20,29 +20,33 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.StoredField;
 import org.apache.lucene.index.IndexableField;
 
 public abstract class AccessControlWriter {
-  
+
   public abstract Iterable<IndexableField> addReadVisiblity(String read, Iterable<IndexableField> fields);
 
   public abstract Iterable<IndexableField> addDiscoverVisiblity(String discover, Iterable<IndexableField> fields);
 
-  protected Iterable<IndexableField> addField(Iterable<IndexableField> fields, IndexableField field,
-      StoredField storedField) {
+  protected Iterable<IndexableField> addField(Iterable<IndexableField> fields, IndexableField... fieldsToAdd) {
     if (fields instanceof Document) {
       Document document = (Document) fields;
-      document.add(field);
-      document.add(storedField);
+      if (fieldsToAdd != null) {
+        for (IndexableField field : fieldsToAdd) {
+          document.add(field);    
+        }
+      }
       return document;
     }
     List<IndexableField> list = new ArrayList<IndexableField>();
     for (IndexableField indexableField : fields) {
       list.add(indexableField);
     }
-    list.add(field);
-    list.add(storedField);
+    if (fieldsToAdd != null) {
+      for (IndexableField field : fieldsToAdd) {
+        list.add(field);    
+      }
+    }
     return list;
   }
 }

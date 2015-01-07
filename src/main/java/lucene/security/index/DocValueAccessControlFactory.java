@@ -62,7 +62,7 @@ public class DocValueAccessControlFactory extends AccessControlFactory {
     return new DocValueAccessControlReader(readAuthorizations, discoverAuthorizations, discoverableFields);
   }
 
-  public class DocValueAccessControlReader extends AccessControlReader {
+  public static class DocValueAccessControlReader extends AccessControlReader {
 
     private final DocumentAuthorizations _readUnionDiscoverAuthorizations;
     private final DocumentAuthorizations _readAuthorizations;
@@ -191,7 +191,7 @@ public class DocValueAccessControlFactory extends AccessControlFactory {
 
   }
 
-  public class DocValueAccessControlWriter extends AccessControlWriter {
+  public static class DocValueAccessControlWriter extends AccessControlWriter {
 
     @Override
     public Iterable<IndexableField> addReadVisiblity(String read, Iterable<IndexableField> fields) {
