@@ -27,11 +27,15 @@ import java.util.concurrent.ExecutorService;
 import lucene.security.index.AccessControlFactory;
 import lucene.security.index.AccessControlReader;
 import lucene.security.index.SecureAtomicReader;
+import lucene.security.index.SecureDirectoryReader;
 
+import org.apache.lucene.document.Document;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
@@ -75,7 +79,6 @@ public class SecureIndexSearcher extends IndexSearcher {
     _readAuthorizations = readAuthorizations;
     _discoverAuthorizations = discoverAuthorizations;
     _discoverableFields = discoverableFields;
-    _secureIndexReader = getSecureIndexReader(context);
     List<AtomicReaderContext> leaves = context.leaves();
     _leaveMap = new HashMap<Object, AtomicReader>();
     for (AtomicReaderContext atomicReaderContext : leaves) {
@@ -84,6 +87,7 @@ public class SecureIndexSearcher extends IndexSearcher {
     }
     _accessControlReader = _accessControlFactory.getReader(readAuthorizations, discoverAuthorizations,
         discoverableFields);
+    _secureIndexReader = getSecureIndexReader(context);
   }
 
   private AtomicReader getSecureAtomicReader(AtomicReader atomicReader) throws IOException {
@@ -91,8 +95,16 @@ public class SecureIndexSearcher extends IndexSearcher {
         _discoverableFields);
   }
 
-  private IndexReader getSecureIndexReader(IndexReaderContext context) {
-    return null;
+  private IndexReader getSecureIndexReader(IndexReaderContext context) throws IOException {
+    IndexReader indexReader = context.reader();
+    if (indexReader instanceof DirectoryReader) {
+      return SecureDirectoryReader.create(_accessControlFactory, (DirectoryReader) indexReader, _readAuthorizations,
+          _discoverAuthorizations, _discoverableFields);
+    } else if (indexReader instanceof AtomicReader) {
+      return SecureAtomicReader.create(_accessControlFactory, (AtomicReader) indexReader, _readAuthorizations,
+          _discoverAuthorizations, _discoverableFields);
+    }
+    throw new IOException("IndexReader type [" + indexReader.getClass() + "] not supported.");
   }
 
   @Override
@@ -139,6 +151,18 @@ public class SecureIndexSearcher extends IndexSearcher {
   @Override
   protected void search(List<AtomicReaderContext> leaves, Weight weight, Collector collector) throws IOException {
     super.search(leaves, weight, getSecureCollector(collector));
+  }
+
+  public Document doc(int docID) throws IOException {
+    return _secureIndexReader.document(docID);
+  }
+
+  public void doc(int docID, StoredFieldVisitor fieldVisitor) throws IOException {
+    _secureIndexReader.document(docID, fieldVisitor);
+  }
+
+  public Document doc(int docID, Set<String> fieldsToLoad) throws IOException {
+    return _secureIndexReader.document(docID, fieldsToLoad);
   }
 
 }

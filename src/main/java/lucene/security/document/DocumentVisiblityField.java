@@ -56,7 +56,7 @@ public class DocumentVisiblityField extends Field implements IndexableField {
   }
 
   public DocumentVisiblityField(String name, String visibility, Store store) {
-    this(name, new DocumentVisibility(visibility), Store.YES);
+    this(name, new DocumentVisibility(visibility), store);
   }
 
   public DocumentVisiblityField(String name, DocumentVisibility visibility) {
