@@ -19,13 +19,39 @@ package lucene.security.index;
 import java.io.IOException;
 
 import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.search.Filter;
 
 public abstract class AccessControlReader implements Cloneable {
 
-  public abstract boolean hasAccess(ReadType type, int docID) throws IOException;
+  public final boolean hasAccess(ReadType type, int docID) throws IOException {
+    switch (type) {
+    case DOCS_ENUM:
+    case LIVEDOCS:
+      return readOrDiscoverAccess(docID);
+    case DOCUMENT_FETCH_DISCOVER:
+      return discoverAccess(docID);
+    case BINARY_DOC_VALUE:
+    case DOCUMENT_FETCH_READ:
+    case NORM_VALUE:
+    case NUMERIC_DOC_VALUE:
+    case SORTED_DOC_VALUE:
+    case SORTED_SET_DOC_VALUE:
+      return readAccess(docID);
+    default:
+      throw new IOException("Unknown type [" + type + "]");
+    }
+  }
 
-  public abstract boolean canDiscoverField(String name);
+  protected abstract boolean readAccess(int docID) throws IOException;
+
+  protected abstract boolean discoverAccess(int docID) throws IOException;
+
+  protected abstract boolean readOrDiscoverAccess(int docID) throws IOException;
+
+  public abstract boolean canDiscoverField(String name) throws IOException;
 
   public abstract AccessControlReader clone(AtomicReader in) throws IOException;
+
+  public abstract Filter getQueryFilter() throws IOException;
 
 }

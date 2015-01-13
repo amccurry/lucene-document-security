@@ -30,8 +30,13 @@ import lucene.security.DocumentVisibilityEvaluator;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.Filter;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap;
@@ -114,27 +119,6 @@ public class DocValueAccessControlFactory extends AccessControlFactory {
       }
     }
 
-    @Override
-    public boolean hasAccess(ReadType type, int docID) throws IOException {
-      BytesRef ref = _ref.get();
-      switch (type) {
-      case DOCS_ENUM:
-      case LIVEDOCS:
-        return readOrDiscoverAccess(ref, docID);
-      case DOCUMENT_FETCH_DISCOVER:
-        return discoverAccess(ref, docID);
-      case BINARY_DOC_VALUE:
-      case DOCUMENT_FETCH_READ:
-      case NORM_VALUE:
-      case NUMERIC_DOC_VALUE:
-      case SORTED_DOC_VALUE:
-      case SORTED_SET_DOC_VALUE:
-        return readAccess(ref, docID);
-      default:
-        throw new IOException("Unknown type [" + type + "]");
-      }
-    }
-
     private boolean readOrDiscoverAccess(BytesRef ref, int doc) throws IOException {
       if (readAccess(ref, doc)) {
         return true;
@@ -187,6 +171,71 @@ public class DocValueAccessControlFactory extends AccessControlFactory {
     @Override
     public boolean canDiscoverField(String name) {
       return _discoverableFields.contains(name);
+    }
+
+    @Override
+    public Filter getQueryFilter() throws IOException {
+      return new Filter() {
+        @Override
+        public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) throws IOException {
+          AtomicReader reader = context.reader();
+          final int maxDoc = reader.maxDoc();
+          final AccessControlReader accessControlReader = DocValueAccessControlReader.this.clone(reader);
+          return new DocIdSet() {
+            @Override
+            public DocIdSetIterator iterator() throws IOException {
+              return new DocIdSetIterator() {
+
+                private int _docId = -1;
+
+                @Override
+                public int advance(int target) throws IOException {
+                  if (_docId == NO_MORE_DOCS) {
+                    return _docId;
+                  }
+                  for (; target < maxDoc; target++) {
+                    if (accessControlReader.hasAccess(ReadType.QUERY, target)) {
+                      return _docId = target;
+                    }
+                  }
+                  return _docId = NO_MORE_DOCS;
+                }
+
+                @Override
+                public int nextDoc() throws IOException {
+                  return advance(_docId + 1);
+                }
+
+                @Override
+                public int docID() {
+                  return _docId;
+                }
+
+                @Override
+                public long cost() {
+                  return maxDoc;
+                }
+
+              };
+            }
+          };
+        }
+      };
+    }
+
+    @Override
+    protected boolean readAccess(int docID) throws IOException {
+      return readAccess(_ref.get(), docID);
+    }
+
+    @Override
+    protected boolean discoverAccess(int docID) throws IOException {
+      return discoverAccess(_ref.get(), docID);
+    }
+
+    @Override
+    protected boolean readOrDiscoverAccess(int docID) throws IOException {
+      return readOrDiscoverAccess(_ref.get(), docID);
     }
 
   }

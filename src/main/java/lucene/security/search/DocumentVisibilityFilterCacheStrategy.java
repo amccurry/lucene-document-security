@@ -14,8 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package lucene.security.index;
+package lucene.security.search;
 
-public enum ReadType {
-  LIVEDOCS, DOCUMENT_FETCH_READ, DOCUMENT_FETCH_DISCOVER, NUMERIC_DOC_VALUE, BINARY_DOC_VALUE, SORTED_DOC_VALUE, NORM_VALUE, SORTED_SET_DOC_VALUE, DOCS_ENUM, QUERY
+import java.io.IOException;
+
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.util.BytesRef;
+
+public abstract class DocumentVisibilityFilterCacheStrategy {
+
+  public abstract DocIdSet getDocIdSet(String fieldName, BytesRef term, AtomicReader reader) throws IOException;
+
+  public abstract Builder createBuilder(String fieldName, BytesRef term, AtomicReader reader) throws IOException;
+
+  public abstract static class Builder {
+
+    public abstract void or(DocIdSetIterator it) throws IOException;
+
+    public abstract DocIdSet getDocIdSet() throws IOException;
+  }
+
 }

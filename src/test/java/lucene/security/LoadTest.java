@@ -25,7 +25,7 @@ import java.util.Random;
 import lucene.security.index.AccessControlFactory;
 import lucene.security.index.AccessControlWriter;
 import lucene.security.index.FilterAccessControlFactory;
-import lucene.security.index.SecureDirectoryReader;
+import lucene.security.search.SecureIndexSearcher;
 
 import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.document.Document;
@@ -64,25 +64,24 @@ public class LoadTest {
       System.out.println("Index Creation Time [" + (e - s) / 1000000.0 + "]");
     }
     DirectoryReader reader = DirectoryReader.open(directory);
-    SecureDirectoryReader secureReader1 = SecureDirectoryReader.create(accessControlFactory, reader,
+
+    IndexSearcher searcher = new IndexSearcher(reader);
+
+    SecureIndexSearcher secureIndexSearcher1 = new SecureIndexSearcher(reader, accessControlFactory,
         Arrays.asList("nothing"), Arrays.asList("nothing"), new HashSet<String>());
 
-    SecureDirectoryReader secureReader2 = SecureDirectoryReader.create(accessControlFactory, reader,
+    SecureIndexSearcher secureIndexSearcher2 = new SecureIndexSearcher(reader, accessControlFactory,
         Arrays.asList("r1"), Arrays.asList("nothing"), new HashSet<String>());
 
     MatchAllDocsQuery query = new MatchAllDocsQuery();
-    hitEnterToContinue();
-    runSearch(reader, query);
-    hitEnterToContinue();
-    runSearch(secureReader1, query);
-    hitEnterToContinue();
-    runSearch(secureReader2, query);
-    hitEnterToContinue();
-    runSearch(reader, query);
-    hitEnterToContinue();
-    runSearch(secureReader1, query);
-    hitEnterToContinue();
-    runSearch(secureReader2, query);
+    for (int p = 0; p < 10; p++) {
+      hitEnterToContinue();
+      runSearch(searcher, query);
+      hitEnterToContinue();
+      runSearch(secureIndexSearcher1, query);
+      hitEnterToContinue();
+      runSearch(secureIndexSearcher2, query);
+    }
   }
 
   private static void hitEnterToContinue() throws IOException {
@@ -92,8 +91,7 @@ public class LoadTest {
     // reader.readLine();
   }
 
-  private static void runSearch(DirectoryReader reader, MatchAllDocsQuery query) throws IOException {
-    IndexSearcher searcher = new IndexSearcher(reader);
+  private static void runSearch(IndexSearcher searcher, MatchAllDocsQuery query) throws IOException {
     long t1 = System.nanoTime();
     TopDocs topDocs = searcher.search(query, 10);
     long t2 = System.nanoTime();
