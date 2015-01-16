@@ -50,16 +50,24 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
 public class SecureAtomicReader extends FilterAtomicReader {
 
   private final AccessControlReader _accessControl;
+  private final AtomicReader _original;
 
-  public static SecureAtomicReader create(AccessControlFactory accessControlFactory, AtomicReader in, Collection<String> readAuthorizations,
-      Collection<String> discoverAuthorizations, Set<String> discoverableFields) throws IOException {
-    AccessControlReader accessControlReader = accessControlFactory.getReader(readAuthorizations, discoverAuthorizations, discoverableFields);
+  public static SecureAtomicReader create(AccessControlFactory accessControlFactory, AtomicReader in,
+      Collection<String> readAuthorizations, Collection<String> discoverAuthorizations, Set<String> discoverableFields)
+      throws IOException {
+    AccessControlReader accessControlReader = accessControlFactory.getReader(readAuthorizations,
+        discoverAuthorizations, discoverableFields);
     return new SecureAtomicReader(in, accessControlReader);
   }
 
   public SecureAtomicReader(AtomicReader in, AccessControlReader accessControlReader) throws IOException {
     super(in);
     _accessControl = accessControlReader.clone(in);
+    _original = in;
+  }
+
+  public AtomicReader getOriginalReader() {
+    return _original;
   }
 
   @Override

@@ -34,6 +34,8 @@ public class SecureDirectoryReader extends FilterDirectoryReader {
     return new SecureDirectoryReader(in, accessControlReader);
   }
 
+  private final DirectoryReader _original;
+
   public SecureDirectoryReader(DirectoryReader in, final AccessControlReader accessControlReader) {
     super(in, new SubReaderWrapper() {
 
@@ -46,6 +48,11 @@ public class SecureDirectoryReader extends FilterDirectoryReader {
         }
       }
     });
+    _original = in;
+  }
+
+  public DirectoryReader getOriginal() {
+    return _original;
   }
 
   @Override
