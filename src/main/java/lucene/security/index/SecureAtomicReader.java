@@ -311,7 +311,11 @@ public class SecureAtomicReader extends FilterAtomicReader {
 
     @Override
     public Terms terms(String field) throws IOException {
-      return new SecureTerms(in.terms(field), _accessControlReader, _maxDoc);
+      Terms terms = in.terms(field);
+      if (terms == null) {
+        return null;
+      }
+      return new SecureTerms(terms, _accessControlReader, _maxDoc);
     }
 
   }
