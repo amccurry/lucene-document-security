@@ -46,7 +46,7 @@ import org.apache.lucene.search.Weight;
 public class SecureIndexSearcher extends IndexSearcher {
 
   private final IndexReader _secureIndexReader;
-  private final Map<Object, AtomicReader> _leaveMap;
+  private final Map<Object, AtomicReaderContext> _leaveMap;
   private final AccessControlFactory _accessControlFactory;
   private final Collection<String> _readAuthorizations;
   private final Collection<String> _discoverAuthorizations;
@@ -79,23 +79,26 @@ public class SecureIndexSearcher extends IndexSearcher {
     _readAuthorizations = readAuthorizations;
     _discoverAuthorizations = discoverAuthorizations;
     _discoverableFields = discoverableFields;
-    List<AtomicReaderContext> leaves = context.leaves();
-    _leaveMap = new HashMap<Object, AtomicReader>();
-    for (AtomicReaderContext atomicReaderContext : leaves) {
-      AtomicReader atomicReader = atomicReaderContext.reader();
-      _leaveMap.put(atomicReader.getCoreCacheKey(), getSecureAtomicReader(atomicReader));
-    }
     _accessControlReader = _accessControlFactory.getReader(readAuthorizations, discoverAuthorizations,
         discoverableFields);
     _secureIndexReader = getSecureIndexReader(context);
+    List<AtomicReaderContext> leaves = _secureIndexReader.leaves();
+    _leaveMap = new HashMap<Object, AtomicReaderContext>();
+    for (AtomicReaderContext atomicReaderContext : leaves) {
+      AtomicReader atomicReader = atomicReaderContext.reader();
+      SecureAtomicReader secureAtomicReader = (SecureAtomicReader) atomicReader;
+      AtomicReader originalReader = secureAtomicReader.getOriginalReader();
+      Object coreCacheKey = originalReader.getCoreCacheKey();
+      _leaveMap.put(coreCacheKey, atomicReaderContext);
+    }
   }
 
-  private AtomicReader getSecureAtomicReader(AtomicReader atomicReader) throws IOException {
+  protected AtomicReader getSecureAtomicReader(AtomicReader atomicReader) throws IOException {
     return SecureAtomicReader.create(_accessControlFactory, atomicReader, _readAuthorizations, _discoverAuthorizations,
         _discoverableFields);
   }
 
-  private IndexReader getSecureIndexReader(IndexReaderContext context) throws IOException {
+  protected IndexReader getSecureIndexReader(IndexReaderContext context) throws IOException {
     IndexReader indexReader = context.reader();
     if (indexReader instanceof DirectoryReader) {
       return SecureDirectoryReader.create(_accessControlFactory, (DirectoryReader) indexReader, _readAuthorizations,
@@ -112,11 +115,11 @@ public class SecureIndexSearcher extends IndexSearcher {
     return _secureIndexReader;
   }
 
-  private Filter getSecureFilter() throws IOException {
+  protected Filter getSecureFilter() throws IOException {
     return _accessControlReader.getQueryFilter();
   }
 
-  private Collector getSecureCollector(final Collector collector) {
+  protected Collector getSecureCollector(final Collector collector) {
     return new Collector() {
 
       @Override
@@ -127,8 +130,8 @@ public class SecureIndexSearcher extends IndexSearcher {
       @Override
       public void setNextReader(AtomicReaderContext context) throws IOException {
         Object key = context.reader().getCoreCacheKey();
-        AtomicReader atomicReader = _leaveMap.get(key);
-        collector.setNextReader(atomicReader.getContext());
+        AtomicReaderContext atomicReaderContext = _leaveMap.get(key);
+        collector.setNextReader(atomicReaderContext);
       }
 
       @Override

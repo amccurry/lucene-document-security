@@ -18,6 +18,7 @@ package lucene.security;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -92,6 +93,8 @@ public class IndexSearcherTest {
     IndexWriterConfig conf = new IndexWriterConfig(Version.LUCENE_43, new StandardAnalyzer(Version.LUCENE_43));
     Directory dir = new RAMDirectory();
     IndexWriter writer = new IndexWriter(dir, conf);
+    writer.addDocument(getEmpty());
+    writer.commit();
     writer.addDocument(getDoc("(a&b)|d", null, "f1", "f2"));
     writer.addDocument(getDoc("a&b&c", null, "f1", "f2"));
     writer.addDocument(getDoc("a&b&c&e", "a&b&c", "f1", "f2"));
@@ -99,6 +102,8 @@ public class IndexSearcherTest {
     writer.close();
 
     DirectoryReader reader = DirectoryReader.open(dir);
+    List<AtomicReaderContext> leaves = reader.leaves();
+    assertEquals(2, leaves.size());
     SecureIndexSearcher searcher = new SecureIndexSearcher(reader, getAccessControlFactory(), readAuthorizations,
         discoverAuthorizations, toSet(discoverableFields));
 
@@ -124,12 +129,14 @@ public class IndexSearcherTest {
       } else if (read != null) {
         DocumentVisibility readVisibility = new DocumentVisibility(read);
         assertTrue(readVisibilityEvaluator.evaluate(readVisibility));
-      } else {
+      } else if (discover != null) {
         DocumentVisibility discoverVisibility = new DocumentVisibility(discover);
         assertTrue(discoverVisibilityEvaluator.evaluate(discoverVisibility));
         // Since this document is only discoverable validate fields that are
         // being returned.
         validateDiscoverFields(doc, discoverableFields);
+      } else {
+        fail("Should not fetch empty document.");
       }
     }
     searcher.search(query, new Collector() {
@@ -145,7 +152,7 @@ public class IndexSearcherTest {
 
       @Override
       public void collect(int doc) throws IOException {
-        
+
       }
 
       @Override
@@ -153,6 +160,10 @@ public class IndexSearcherTest {
         return false;
       }
     });
+  }
+
+  private Iterable<? extends IndexableField> getEmpty() {
+    return new Document();
   }
 
   private void validateDiscoverFields(Document doc, Collection<String> discoverableFields) {
