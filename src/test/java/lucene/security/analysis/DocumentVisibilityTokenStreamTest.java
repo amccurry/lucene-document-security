@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import lucene.security.DocumentVisibility;
-import lucene.security.analysis.DocumentVisibilityTokenStream;
 
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.junit.Test;

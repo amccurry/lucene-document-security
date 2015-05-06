@@ -75,11 +75,8 @@ public class DocumentVisibilityFilter extends Filter {
     Fields fields = reader.fields();
     Terms terms = fields.terms(_fieldName);
     if (terms == null) {
-      if (acceptDocs instanceof DocIdSet) {
-        return (DocIdSet) acceptDocs;
-      } else {
-        return wrap(acceptDocs);
-      }
+      // if field is not present then show nothing.
+      return DocIdSet.EMPTY_DOCIDSET;
     }
     TermsEnum iterator = terms.iterator(null);
     BytesRef bytesRef;
@@ -90,7 +87,9 @@ public class DocumentVisibilityFilter extends Filter {
         if (docIdSet != null) {
           list.add(docIdSet);
         } else {
-          DocsEnum docsEnum = iterator.docs(acceptDocs, null);
+          // Do not use acceptDocs because we want the acl cache to be version
+          // agnostic.
+          DocsEnum docsEnum = iterator.docs(null, null);
           list.add(buildCache(reader, docsEnum, bytesRef));
         }
       }
@@ -113,13 +112,6 @@ public class DocumentVisibilityFilter extends Filter {
     byte[] buf = new byte[bytesRef.length];
     System.arraycopy(bytesRef.bytes, bytesRef.offset, buf, 0, bytesRef.length);
     return buf;
-  }
-
-  private DocIdSet wrap(Bits acceptDocs) {
-    if (acceptDocs == null) {
-      return null;
-    }
-    throw new RuntimeException("not implemented " + acceptDocs);
   }
 
   public static DocIdSet getLogicalOr(DocIdSet... list) throws IOException {

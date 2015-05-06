@@ -31,6 +31,7 @@ import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.util.Bits;
 
@@ -188,6 +189,15 @@ public class FilterAccessControlFactory extends AccessControlFactory {
         public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) throws IOException {
           FilterAccessControlReader accessControlReader = (FilterAccessControlReader) FilterAccessControlReader.this
               .clone(context.reader());
+          DocIdSet secureDocIdSet = getSecureDocIdSet(accessControlReader);
+          if (acceptDocs == null) {
+            return secureDocIdSet;
+          } else {
+            return applyDeletes(acceptDocs, secureDocIdSet);
+          }
+        }
+
+        private DocIdSet getSecureDocIdSet(FilterAccessControlReader accessControlReader) throws IOException {
           DocIdSet readDocIdSet = accessControlReader._readDocIdSet;
           DocIdSet discoverDocIdSet = accessControlReader._discoverDocIdSet;
           if (isEmptyOrNull(discoverDocIdSet) && isEmptyOrNull(readDocIdSet)) {
@@ -206,6 +216,57 @@ public class FilterAccessControlFactory extends AccessControlFactory {
             return true;
           }
           return false;
+        }
+      };
+    }
+
+    protected DocIdSet applyDeletes(final Bits acceptDocs, final DocIdSet secureDocIdSet) {
+      return new DocIdSet() {
+
+        @Override
+        public DocIdSetIterator iterator() throws IOException {
+          final DocIdSetIterator docIdSetIterator = secureDocIdSet.iterator();
+          return new DocIdSetIterator() {
+
+            @Override
+            public int nextDoc() throws IOException {
+              int docId;
+              while ((docId = docIdSetIterator.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+                if (acceptDocs.get(docId)) {
+                  return docId;
+                }
+              }
+              return DocIdSetIterator.NO_MORE_DOCS;
+            }
+
+            @Override
+            public int advance(int target) throws IOException {
+              int docId = docIdSetIterator.advance(target);
+              if (docId == DocIdSetIterator.NO_MORE_DOCS) {
+                return DocIdSetIterator.NO_MORE_DOCS;
+              }
+              if (acceptDocs.get(docId)) {
+                return docId;
+              }
+              while ((docId = docIdSetIterator.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+                if (acceptDocs.get(docId)) {
+                  return docId;
+                }
+              }
+              return DocIdSetIterator.NO_MORE_DOCS;
+            }
+
+            @Override
+            public int docID() {
+              return docIdSetIterator.docID();
+            }
+
+            @Override
+            public long cost() {
+              return docIdSetIterator.cost() + 1;
+            }
+
+          };
         }
       };
     }

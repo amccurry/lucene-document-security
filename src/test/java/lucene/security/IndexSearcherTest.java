@@ -40,12 +40,14 @@ import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.Collector;
+import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.TopDocs;
@@ -92,26 +94,49 @@ public class IndexSearcherTest {
       Collection<String> discoverableFields) throws IOException, ParseException {
     IndexWriterConfig conf = new IndexWriterConfig(Version.LUCENE_43, new StandardAnalyzer(Version.LUCENE_43));
     Directory dir = new RAMDirectory();
-    IndexWriter writer = new IndexWriter(dir, conf);
-    writer.addDocument(getEmpty());
-    writer.commit();
-    writer.addDocument(getDoc("(a&b)|d", null, "f1", "f2"));
-    writer.addDocument(getDoc("a&b&c", null, "f1", "f2"));
-    writer.addDocument(getDoc("a&b&c&e", "a&b&c", "f1", "f2"));
-    writer.addDocument(getDoc(null, null, "f1", "f2"));// can't find
-    writer.close();
-
+    {
+      IndexWriter writer = new IndexWriter(dir, conf);
+      writer.addDocument(getEmpty());
+      writer.commit();
+      writer.addDocument(getDoc(0, "(a&b)|d", null, "f1", "f2"));
+      writer.addDocument(getDoc(1, "a&b&c", null, "f1", "f2"));
+      writer.addDocument(getDoc(2, "a&b&c&e", "a&b&c", "f1", "f2"));
+      writer.addDocument(getDoc(3, null, null, "f1", "f2"));// can't find
+      writer.close(false);
+    }
     DirectoryReader reader = DirectoryReader.open(dir);
+    validate(expected, 2, readAuthorizations, discoverAuthorizations, discoverableFields, dir, reader);
+    {
+      IndexWriter writer = new IndexWriter(dir, conf);
+      writer.deleteDocuments(new Term("id", "0"));
+      writer.addDocument(getDoc(0, "(a&b)|d", null, "f1", "f2"));
+      writer.close(false);
+    }
+    reader = DirectoryReader.openIfChanged(reader);
+    validate(expected, 3, readAuthorizations, discoverAuthorizations, discoverableFields, dir, reader);
+    {
+      IndexWriter writer = new IndexWriter(dir, conf);
+      writer.deleteDocuments(new Term("id", "1"));
+      writer.addDocument(getDoc(1, "a&b&c", null, "f1", "f2"));
+      writer.close(false);
+    }
+    reader = DirectoryReader.openIfChanged(reader);
+    validate(expected, 4, readAuthorizations, discoverAuthorizations, discoverableFields, dir, reader);
+  }
+
+  private void validate(int expected, int leafCount, Collection<String> readAuthorizations,
+      Collection<String> discoverAuthorizations, Collection<String> discoverableFields, Directory dir,
+      IndexReader reader) throws IOException {
     List<AtomicReaderContext> leaves = reader.leaves();
-    assertEquals(2, leaves.size());
+    assertEquals(leafCount, leaves.size());
     SecureIndexSearcher searcher = new SecureIndexSearcher(reader, getAccessControlFactory(), readAuthorizations,
         discoverAuthorizations, toSet(discoverableFields));
-
-    String queryStr = "text";
-    Query query = new QueryParser(Version.LUCENE_43, "text", new StandardAnalyzer(Version.LUCENE_43)).parse(queryStr);
-    TopDocs topDocs = searcher.search(query, 10);
-
-    assertEquals(expected, topDocs.totalHits);
+    TopDocs topDocs;
+    Query query = new MatchAllDocsQuery();
+    {
+      topDocs = searcher.search(query, 10);
+      assertEquals(expected, topDocs.totalHits);
+    }
     DocumentAuthorizations readDocumentAuthorizations = new DocumentAuthorizations(readAuthorizations);
     DocumentAuthorizations discoverDocumentAuthorizations = new DocumentAuthorizations(discoverAuthorizations);
     DocumentVisibilityEvaluator readVisibilityEvaluator = new DocumentVisibilityEvaluator(readDocumentAuthorizations);
@@ -184,8 +209,10 @@ public class IndexSearcherTest {
     return _accessControlFactory;
   }
 
-  private Iterable<? extends IndexableField> getDoc(String read, String discover, String field1, String field2) {
+  private Iterable<? extends IndexableField> getDoc(int docId, String read, String discover, String field1,
+      String field2) {
     Document doc = new Document();
+    doc.add(new StringField("id", Integer.toString(docId), Store.YES));
     AccessControlWriter writer = _accessControlFactory.getWriter();
     doc.add(new StringField("f1", field1, Store.YES));
     doc.add(new StringField("f2", field2, Store.YES));
