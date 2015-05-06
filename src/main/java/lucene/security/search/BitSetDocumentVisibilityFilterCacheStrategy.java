@@ -47,13 +47,20 @@ public class BitSetDocumentVisibilityFilterCacheStrategy extends DocumentVisibil
   @Override
   public DocIdSet getDocIdSet(String fieldName, BytesRef term, AtomicReader reader) {
     Key key = new Key(fieldName, term, reader.getCoreCacheKey());
-    return _cache.get(key);
+    DocIdSet docIdSet = _cache.get(key);
+    if (docIdSet != null) {
+      LOG.info("Cache hit for key [" + key + "]");
+    } else {
+      LOG.info("Cache miss for key [" + key + "]");
+    }
+    return docIdSet;
   }
 
   @Override
   public Builder createBuilder(String fieldName, BytesRef term, final AtomicReader reader) {
     final OpenBitSet bitSet = new OpenBitSet(reader.maxDoc());
     final Key key = new Key(fieldName, term, reader.getCoreCacheKey());
+    LOG.info("Creating new bitset for key [" + key + "] on index [" + reader + "]");
     return new Builder() {
       @Override
       public void or(DocIdSetIterator it) throws IOException {
@@ -68,6 +75,7 @@ public class BitSetDocumentVisibilityFilterCacheStrategy extends DocumentVisibil
         reader.addReaderClosedListener(new ReaderClosedListener() {
           @Override
           public void onClose(IndexReader reader) {
+            LOG.info("Removing old bitset for key [" + key + "]");
             DocIdSet docIdSet = _cache.remove(key);
             if (docIdSet == null) {
               LOG.warn("DocIdSet was missing for key [" + docIdSet + "]");
@@ -127,6 +135,11 @@ public class BitSetDocumentVisibilityFilterCacheStrategy extends DocumentVisibil
       } else if (!_term.equals(other._term))
         return false;
       return true;
+    }
+
+    @Override
+    public String toString() {
+      return "Key [_object=" + _object + ", _fieldName=" + _fieldName + ", _term=" + _term + "]";
     }
 
   }
